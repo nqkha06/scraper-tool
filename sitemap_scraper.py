@@ -384,7 +384,7 @@ def main():
     
     # Thu thập dữ liệu (giới hạn 50 bài đầu tiên để test)
     # Bỏ max_articles=50 để scrape tất cả
-    scraper.scrape_all(max_articles=50, delay=1)
+    scraper.scrape_all(max_articles=5, delay=1)
     
     # Lưu kết quả
     if scraper.articles_data:
@@ -407,6 +407,36 @@ def main():
             print(f"  • Size: {sample['size']}")
             print(f"  • MOD: {sample['mod_info'][:50]}...")
             print(f"  • Images: {sample['image_count']} ảnh")
+        
+        # Export sang định dạng tùy chỉnh
+        print("\n" + "="*60)
+        print("📤 XUẤT SANG ĐỊNH DẠNG TÙY CHỈNH")
+        print("="*60)
+        
+        try:
+            from export_custom_format import export_to_custom_format
+            
+            config = {
+                "theme_name": "liteapks",
+                "theme_author": "admin",
+                "theme_developer": "LITEAPKS Team",
+                "theme_buy_link": "https://liteapks.com",
+                "website": "https://liteapks.com"
+            }
+            
+            # Export với 50 bài/file
+            output_files = export_to_custom_format(
+                scraper.articles_data,
+                output_prefix="liteapks_custom",
+                posts_per_file=50,
+                config=config
+            )
+            
+            print(f"\n✅ Đã tạo {len(output_files)} file định dạng tùy chỉnh")
+            
+        except ImportError:
+            print("\n💡 Để export sang định dạng tùy chỉnh, chạy:")
+            print("   python export_custom_format.py")
 
 
 if __name__ == "__main__":

@@ -69,9 +69,18 @@ scraper.scrape_all(max_articles=None, delay=1)
 
 ## Kết quả
 
-Tool sẽ tạo ra 2 file:
+Tool sẽ tạo ra nhiều định dạng file:
+
+### 1. Định dạng chuẩn
 - `liteapks_articles.csv` - Dữ liệu dạng bảng
-- `liteapks_articles.json` - Dữ liệu dạng JSON
+- `liteapks_articles.json` - Dữ liệu dạng JSON (24 trường)
+
+### 2. Định dạng tùy chỉnh (Custom Format)
+- `liteapks_custom.json` - Định dạng WordPress/Theme compatible
+- Tự động chia file nếu vượt quá số bài cấu hình
+- Hỗ trợ pagination với info metadata
+
+**Xem chi tiết:** [EXPORT_GUIDE.md](EXPORT_GUIDE.md)
 
 ### Xem phân tích dữ liệu
 
