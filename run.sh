@@ -1,26 +1,26 @@
 #!/bin/bash
 
-# Script chạy công cụ scraper
+# Script to run the scraper tool
 
-echo "🚀 Khởi động Yoast Sitemap Scraper..."
+echo "🚀 Starting App..."
 echo ""
 
-# Kích hoạt virtual environment
+# Activate virtual environment
 if [ ! -d "venv" ]; then
-    echo "📦 Tạo virtual environment..."
+    echo "Creating virtual environment..."
     python3 -m venv venv
     source venv/bin/activate
-    echo "📥 Cài đặt dependencies..."
+    echo "Installing dependencies..."
     pip install -r requirements.txt
 else
     source venv/bin/activate
 fi
 
-# Chạy scraper
+# Run app
 echo ""
-echo "▶️  Chạy scraper..."
+echo "▶️ Running app..."
 echo ""
 python sitemap_scraper.py
 
 echo ""
-echo "✅ Hoàn tất!"
+echo "✅ Completed!"

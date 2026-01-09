@@ -1,9 +1,6 @@
-#!/usr/bin/env python3
-"""
-Công cụ thu thập dữ liệu từ Yoast Sitemap
-Tool to scrape data from Yoast sitemap articles
-"""
-
+import base64
+from pydoc import text
+from urllib import response
 import requests
 from bs4 import BeautifulSoup
 import xml.etree.ElementTree as ET
@@ -13,6 +10,19 @@ from datetime import datetime
 from urllib.parse import urljoin
 import time
 import os
+from math import ceil
+
+from gpt_rewriter import GPTRewriter, RewriteConfig
+
+IS_REWRITE_MODE = True
+
+config = RewriteConfig(
+    model="gpt-4.1-mini",
+    temperature=0.7,
+    top_p=0.9,
+    max_output_tokens=2500,
+)
+
 
 class YoastSitemapScraper:
     def __init__(self, base_url="https://liteapks.com"):
@@ -24,8 +34,6 @@ class YoastSitemapScraper:
         self.articles_data = []
         
     def get_sitemap_urls(self):
-        """Lấy danh sách tất cả các sitemap URLs"""
-        print(f"📡 Đang tải sitemap chính từ: {self.sitemap_url}")
         try:
             response = requests.get(self.sitemap_url, headers=self.headers, timeout=30)
             response.raise_for_status()
@@ -38,11 +46,11 @@ class YoastSitemapScraper:
                 loc = sitemap.find('ns:loc', namespace)
                 if loc is not None and 'post-sitemap' in loc.text:
                     sitemap_urls.append(loc.text)
-                    print(f"  ✓ Tìm thấy: {loc.text}")
+                    print(f"Found: {loc.text}")
             
             return sitemap_urls
         except Exception as e:
-            print(f"❌ Lỗi khi tải sitemap: {e}")
+            print(f"ERROR: {e}")
             return []
     
     def get_article_urls_from_sitemap(self, sitemap_url):
@@ -89,6 +97,27 @@ class YoastSitemapScraper:
             meta_desc = soup.find('meta', {'name': 'description'})
             description = meta_desc.get('content', 'N/A') if meta_desc else "N/A"
             
+            thumbnailUrl = ""
+
+            for script in soup.find_all("script", type="application/ld+json"):
+                if not script.string:
+                    continue
+
+                try:
+                    data = json.loads(script.string)
+                except Exception:
+                    continue
+
+                if isinstance(data, dict) and "@graph" in data:
+                    for g in data["@graph"]:
+                        thumb = g.get("thumbnailUrl")
+                        if thumb:
+                            thumbnailUrl = thumb
+                            break
+
+                if thumbnailUrl:
+                    break
+
             # 2. JSON-LD SCHEMA DATA
             schema_data = {}
             json_ld_scripts = soup.find_all('script', {'type': 'application/ld+json'})
@@ -111,7 +140,9 @@ class YoastSitemapScraper:
             version = schema_data.get('softwareVersion', 'N/A')
             mod_info = "N/A"
             google_play_link = "N/A"
-            
+
+            poster = soup.find('meta', {'property': 'og:image'}).get('content', '') if soup.find('meta', {'property': 'og:image'}) else ''
+
             info_table = soup.find('table', class_='table')
             if info_table:
                 rows = info_table.find_all('tr')
@@ -155,11 +186,8 @@ class YoastSitemapScraper:
             mod_info_detailed = '; '.join(mod_details) if mod_details else mod_info
             
             # 5. RATING & REVIEWS
-            rating = "N/A"
-            rating_count = "N/A"
-            rating_div = soup.find('div', class_='rating')
-            if rating_div:
-                rating = rating_div.get('data-rateyo-rating', 'N/A')
+            rating = ""
+            rating_count = ""
             
             # Từ schema
             if 'aggregateRating' in schema_data:
@@ -207,36 +235,32 @@ class YoastSitemapScraper:
             category_path = ' > '.join(categories) if categories else genre
             
             # 8. DOWNLOAD LINK
-            download_link = "N/A"
+            download_link = []
             download_btn = soup.find('a', href=lambda x: x and '/download/' in str(x))
             if download_btn:
-                download_link = urljoin(self.base_url, download_btn.get('href', ''))
-            
-            # 9. NỘI DUNG BÀI VIẾT
-            content = "N/A"
-            entry_content = soup.find('div', class_='entry-content')
+                download_link = self.get_download_link(urljoin(self.base_url, download_btn.get('href', '')))
+
+            content = ""
+            entry_content = soup.select_one("div>div.entry-content")
             if entry_content:
-                # Lấy tất cả paragraphs
-                paragraphs = entry_content.find_all('p')
-                content_parts = []
-                for p in paragraphs[:3]:  # Lấy 3 đoạn đầu
-                    text = p.get_text(strip=True)
-                    if text and len(text) > 20:  # Bỏ qua đoạn quá ngắn
-                        content_parts.append(text)
-                
-                content = ' '.join(content_parts)
-                if len(content) > 800:
-                    content = content[:800] + "..."
+                content = entry_content.decode_contents().strip()
             
             # 10. HÌNH ẢNH
+
+            slide_tag = soup.select_one(".overflow-auto.mb-3")
+     
             images = []
             
-            # Main featured image
-            main_img = soup.find('meta', {'property': 'og:image'})
-            if main_img:
-                images.append(main_img.get('content', ''))
-            
             # Screenshots từ content
+            if slide_tag:
+                img_tags = slide_tag.find_all('img', src=True)
+                for img in img_tags:
+                    img_url = img.get('src', '')
+                    if img_url and 'wp-content/uploads' in img_url:
+                        full_url = urljoin(self.base_url, img_url)
+                        if full_url not in images:
+                            images.append(full_url)
+
             if entry_content:
                 img_tags = entry_content.find_all('img', src=True)
                 for img in img_tags:
@@ -247,45 +271,60 @@ class YoastSitemapScraper:
                             images.append(full_url)
             
             # Giới hạn số ảnh
-            images = images[:10]
+            images = images[:10]    
+
             
-            # 11. OPERATING SYSTEM
-            operating_system = schema_data.get('operatingSystem', 'Android')
+            wp_description_GP = description
+            mod_info_GP = soup.select_one("#more-info-1>div").decode_contents().strip() if soup.select_one("#more-info-1>div") else ""
+            whatnews = soup.select_one("section.mb-4>div.alert.alert-success").decode_contents().strip() if soup.select_one("section.mb-4>div.alert.alert-success") else ""
+
+            if (IS_REWRITE_MODE):
+                rewriter = GPTRewriter(config=config)
+                print("  ✍️  Rewriting description [content]...")
+                content = rewriter.rewrite_html(content)
+                print("  ✍️  Rewriting wp_description_GP...")
+                if wp_description_GP:
+                    wp_description_GP = rewriter.rewrite_text(wp_description_GP)
+                print("  ✍️  Rewriting mod info...")
+                if mod_info_GP:
+                    mod_info_GP = rewriter.rewrite_html(mod_info_GP)
+                print("  ✍️  Rewriting what's new...")
+                if whatnews:
+                    whatnews = rewriter.rewrite_html(whatnews)
             
-            # 12. PRICE
-            price = "Free"
-            if 'offers' in schema_data:
-                price_val = schema_data['offers'].get('price', '0')
-                currency = schema_data['offers'].get('priceCurrency', 'USD')
-                if price_val == '0' or price_val == 0:
-                    price = "Free"
-                else:
-                    price = f"{price_val} {currency}"
-            
-            # TẠO DICTIONARY KẾT QUẢ
+
             article_data = {
-                'url': url,
                 'title': title_text,
-                'description': description,
-                'app_name': app_name,
-                'publisher': publisher,
-                'author': author,
-                'genre': genre,
-                'categories': category_path,
-                'size': size,
-                'version': version,
-                'operating_system': operating_system,
-                'price': price,
-                'mod_info': mod_info_detailed,
-                'rating': str(rating),
-                'rating_count': str(rating_count),
-                'google_play_link': google_play_link,
-                'download_link': download_link,
-                'published_time': published_time,
-                'modified_time': modified_time,
-                'content': content,
-                'images': '|'.join(images),  # Phân cách bằng |
-                'image_count': len(images),
+                'description': content,
+                'thumbnail': thumbnailUrl,
+                'slug': url.rstrip('.html').split('/')[-1],
+                'category': {
+                    'name': categories[0] if len(categories) > 0 else 'N/A',
+                    'slug': categories[0].lower().replace(' ', '-') if len(categories) > 0 else 'n-a'
+                },
+                'subcategory': {
+                    'name': categories[1] if len(categories) > 1 else 'N/A',
+                    'slug': categories[1].lower().replace(' ', '-') if len(categories) > 1 else 'n-a'
+                },
+                'apktemplates': {
+                    "wp_description_GP": wp_description_GP,
+                    "wp_mod_info_GP": mod_info_GP,
+                    "wp_whatnews_GP": whatnews,
+                    "wp_title_GP": app_name,
+                    "wp_version_GP": version,
+                    "wp_developers_GP": publisher, #Publisher
+                    "wp_sizes_GP": size,
+                    "wp_GP_ID": "",
+                    "wp_mods": mod_info,
+                    "avg_rating": rating,
+                    "total_votes": rating_count,
+                    "repeatable_download_link": [
+                        i for i in download_link
+                    ],
+                    "ss_images": [{"ss_url": img} for img in images],
+
+                    "wp_poster_GP": poster
+                },
                 'scraped_at': datetime.now().isoformat()
             }
             
@@ -297,12 +336,15 @@ class YoastSitemapScraper:
     
     def scrape_all(self, max_articles=None, delay=1, sitemap_urls=None):
         """Thu thập tất cả bài viết từ sitemap"""
-        print("🚀 Bắt đầu thu thập dữ liệu từ Yoast Sitemap\n")
+        print("🚀 Bắt đầu thu thập dữ liệu\n")
         
         # Nếu không cung cấp sitemap URLs, lấy từ sitemap chính
         if sitemap_urls is None:
-            sitemap_urls = self.get_sitemap_urls()
-            
+            # sitemap_urls = self.get_sitemap_urls()
+            sitemap_urls = [
+                    f"{self.base_url}/post-sitemap1.xml",
+                ]
+
             if not sitemap_urls:
                 print("⚠️  Không tìm thấy sitemap từ trang chính.")
                 print("💡 Sử dụng danh sách sitemap mặc định...")
@@ -359,85 +401,131 @@ class YoastSitemapScraper:
         
         print(f"💾 Đã lưu vào: {filepath}")
     
-    def save_to_json(self, filename='articles_data.json'):
-        """Lưu dữ liệu vào file JSON"""
+    def save_to_json(
+        self,
+        base_filename="articles_data",
+        chunk_size=50,
+        output_dir="exports"
+    ):
+
         if not self.articles_data:
             print("⚠️  Không có dữ liệu để lưu!")
             return
-        
-        filepath = os.path.join(os.path.dirname(__file__), filename)
-        
-        with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(self.articles_data, f, ensure_ascii=False, indent=2)
-        
-        print(f"💾 Đã lưu vào: {filepath}")
 
+        # thư mục output
+        base_path = os.path.join(os.path.dirname(__file__), output_dir)
+        os.makedirs(base_path, exist_ok=True)
+
+        total_items = len(self.articles_data)
+        total_chunks = ceil(total_items / chunk_size)
+
+        for index in range(total_chunks):
+            start = index * chunk_size
+            end = start + chunk_size
+            chunk_items = self.articles_data[start:end]
+
+            payload = {
+                "info": {
+                    "theme_name": "modyolo",
+                    "theme_author": "admin",
+                    "theme_developer": "Sathish & Sahil",
+                    "theme_buy_link": "https://apkfindy.com/product/modyolo",
+                    "website": "https://apkfindy.com",
+                    "created": "2026-01-01"
+                },
+                "posts": chunk_items
+            }
+
+            filename = f"{base_filename}_part_{index + 1}.json"
+            filepath = os.path.join(base_path, filename)
+
+            with open(filepath, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False, indent=2)
+
+            print(f"SAVED: {filepath} ({len(chunk_items)} articles)")
+
+    def get_download_link(self, url):
+        response = requests.get(url, headers=self.headers, timeout=15)
+        response.raise_for_status()
+            
+        soup = BeautifulSoup(response.content, 'html.parser')
+        results = []
+
+        accordion = soup.find(id='accordion-versions')
+
+        if not accordion:
+            return []
+            accordion = soup.find("article")
+        else:
+            for item in accordion.select('.border.rounded.mb-2'):
+                # # NAME
+                # name_tag = item.select_one('div.collapse a>span>span')
+                # name = name_tag.get_text(strip=True) if name_tag else ""
+
+                # DOWNLOAD BUTTON
+                download_btn = item.select_one('a[href*="/download/"]')
+                if not download_btn:
+                    continue
+
+                url = urljoin(self.base_url, download_btn.get('href', ''))
+
+                # VERSION (Mod Menu / empty cũng không crash)
+                collapse = item.select_one('a.collapsed')
+                version, info = [x.strip() for x in collapse.get_text(strip=True).split("-", 1)]
+                version = version.lstrip("v")
+
+                # SIZE
+                size_tag = item.select_one('span.ml-auto')
+                size = size_tag.get_text(strip=True) if size_tag else ""
+
+                results.append({
+                    'download_name': "APK",
+                    'download_url': url,
+                    'download_version': version,
+                    'download_size': size,
+                    'download_mod_info': info
+                })
+
+        for i in results:
+            url = i['download_url']
+
+            try:
+                response = requests.get(
+                    url,
+                    headers=self.headers,
+                    timeout=15,
+                    allow_redirects=True
+                )
+                response.raise_for_status()
+            except Exception:
+                i['download_url'] = url  # fallback
+
+                continue
+
+            soup = BeautifulSoup(response.text, 'html.parser')
+
+            link_tag = soup.find(id='download-loaded-link')
+            if link_tag and link_tag.has_attr('data-href'):
+                i['download_url'] = base64.b64decode(link_tag['data-href']).decode('utf-8')
+            else:
+                i['download_url'] = response.url
+
+        return results
 
 def main():
     """Hàm chính"""
     print("="*60)
-    print("   CÔNG CỤ THU THẬP DỮ LIỆU YOAST SITEMAP")
-    print("   Liteapks.com Scraper Tool - PHIÊN BẢN TỐI ƯU")
+    print("   START SCRAPING from liteapks.com   ")
     print("="*60 + "\n")
     
     scraper = YoastSitemapScraper()
-    
-    # Thu thập dữ liệu (giới hạn 50 bài đầu tiên để test)
-    # Bỏ max_articles=50 để scrape tất cả
-    scraper.scrape_all(max_articles=5, delay=1)
+ 
+    scraper.scrape_all(max_articles=500, delay=1)
     
     # Lưu kết quả
     if scraper.articles_data:
-        scraper.save_to_csv('liteapks_articles.csv')
+        # scraper.save_to_csv('liteapks_articles.csv')
         scraper.save_to_json('liteapks_articles.json')
-        
-        print("\n📈 Thống kê:")
-        print(f"  - Tổng số bài viết: {len(scraper.articles_data)}")
-        print(f"  - Định dạng lưu trữ: CSV và JSON")
-        print(f"  - Số trường dữ liệu: 25+ trường/bài viết")
-        
-        # Hiển thị 1 bài mẫu
-        if len(scraper.articles_data) > 0:
-            print("\n📄 Bài viết mẫu (đầu tiên):")
-            sample = scraper.articles_data[0]
-            print(f"  • Title: {sample['title'][:60]}...")
-            print(f"  • App: {sample['app_name']}")
-            print(f"  • Rating: {sample['rating']}/5 ({sample['rating_count']} votes)")
-            print(f"  • Version: {sample['version']}")
-            print(f"  • Size: {sample['size']}")
-            print(f"  • MOD: {sample['mod_info'][:50]}...")
-            print(f"  • Images: {sample['image_count']} ảnh")
-        
-        # Export sang định dạng tùy chỉnh
-        print("\n" + "="*60)
-        print("📤 XUẤT SANG ĐỊNH DẠNG TÙY CHỈNH")
-        print("="*60)
-        
-        try:
-            from export_custom_format import export_to_custom_format
-            
-            config = {
-                "theme_name": "liteapks",
-                "theme_author": "admin",
-                "theme_developer": "LITEAPKS Team",
-                "theme_buy_link": "https://liteapks.com",
-                "website": "https://liteapks.com"
-            }
-            
-            # Export với 50 bài/file
-            output_files = export_to_custom_format(
-                scraper.articles_data,
-                output_prefix="liteapks_custom",
-                posts_per_file=50,
-                config=config
-            )
-            
-            print(f"\n✅ Đã tạo {len(output_files)} file định dạng tùy chỉnh")
-            
-        except ImportError:
-            print("\n💡 Để export sang định dạng tùy chỉnh, chạy:")
-            print("   python export_custom_format.py")
-
 
 if __name__ == "__main__":
     main()
