@@ -63,17 +63,22 @@ class YoastSitemapScraper:
             root = ET.fromstring(response.content)
             namespace = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
             
-            urls = []
-            for url in root.findall('.//ns:url', namespace):
-                loc = url.find('ns:loc', namespace)
-                lastmod = url.find('ns:lastmod', namespace)
-                
-                if loc is not None:
-                    url_data = {
-                        'url': loc.text,
-                        'lastmod': lastmod.text if lastmod is not None else None
+            urls = [{
+                        'url': "https://liteapks.com/tiktok-2.html",
+                        'lastmod': "20226-01-01T12:00:00+00:00"
                     }
-                    urls.append(url_data)
+            ]
+
+            # for url in root.findall('.//ns:url', namespace):
+            #     loc = url.find('ns:loc', namespace)
+            #     lastmod = url.find('ns:lastmod', namespace)
+                
+            #     if loc is not None:
+            #         url_data = {
+            #             'url': loc.text,
+            #             'lastmod': lastmod.text if lastmod is not None else None
+            #         }
+            #         urls.append(url_data)
             
             print(f"  ✓ Tìm thấy {len(urls)} bài viết")
             return urls
@@ -405,7 +410,7 @@ class YoastSitemapScraper:
         self,
         base_filename="articles_data",
         chunk_size=50,
-        output_dir="exports"
+        output_dir="11-01"
     ):
 
         if not self.articles_data:
