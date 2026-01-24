@@ -7,7 +7,7 @@ import xml.etree.ElementTree as ET
 import csv
 import json
 from datetime import datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 import time
 import os
 from math import ceil
@@ -23,6 +23,17 @@ config = RewriteConfig(
     max_output_tokens=2500,
 )
 
+def wp_original_image_simple(url: str) -> str:
+    path = urlparse(url).path
+    parts = path.rsplit('.', 1)
+
+    name = parts[0]
+    ext = parts[1]
+
+    if '-' in name and name.split('-')[-1].count('x') == 1:
+        name = '-'.join(name.split('-')[:-1])
+
+    return url.replace(path, f"{name}.{ext}")
 
 class YoastSitemapScraper:
     def __init__(self, base_url="https://liteapks.com"):
@@ -63,11 +74,33 @@ class YoastSitemapScraper:
             root = ET.fromstring(response.content)
             namespace = {'ns': 'http://www.sitemaps.org/schemas/sitemap/0.9'}
             
-            urls = [{
-                        'url': "https://liteapks.com/tiktok-2.html",
-                        'lastmod': "20226-01-01T12:00:00+00:00"
-                    }
-            ]
+            urls = [
+            # {"url": "https://liteapks.com/ark-ultimate-mobile-edition.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/fl-studio-mobile.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/alien-invasion.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/my-supermarket-simulator-3d.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/spider-fighter-3.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/mall-fast-food-simulator-3d.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/state-io.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/pk-xd.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/bitlife-3.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/the-schedule-i-project.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/crowd-evolution.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/truck-masters-india.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/good-pizza-great-pizza.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/sakura-school-simulator.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/the-battle-cats.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            # {"url": "https://liteapks.com/kinemaster-app.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            {"url": "https://liteapks.com/merge-fellas.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            {"url": "https://liteapks.com/nightclub-tycoon-idle-manager.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            {"url": "https://liteapks.com/beach-buggy-racing-2.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            {"url": "https://liteapks.com/frag-pro-shooter.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            {"url": "https://liteapks.com/f-class-adventurer.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+            {"url": "https://liteapks.com/pokemon-go.html", "lastmod": "2026-01-01T12:00:00+00:00"},
+
+
+        ]
+
 
             # for url in root.findall('.//ns:url', namespace):
             #     loc = url.find('ns:loc', namespace)
@@ -187,9 +220,7 @@ class YoastSitemapScraper:
                         mod_text = li.get_text(strip=True)
                         if mod_text:
                             mod_details.append(mod_text)
-            
-            mod_info_detailed = '; '.join(mod_details) if mod_details else mod_info
-            
+                        
             # 5. RATING & REVIEWS
             rating = ""
             rating_count = ""
@@ -211,22 +242,7 @@ class YoastSitemapScraper:
                     if votes:
                         rating_count = votes.group(1)
             
-            # 6. AUTHOR & DATES
-            author = "N/A"
-            author_meta = soup.find('meta', {'name': 'author'})
-            if author_meta:
-                author = author_meta.get('content', 'N/A')
-            
-            published_time = "N/A"
-            modified_time = "N/A"
-            pub_meta = soup.find('meta', {'property': 'article:published_time'})
-            if pub_meta:
-                published_time = pub_meta.get('content', 'N/A')
-            
-            mod_meta = soup.find('meta', {'property': 'article:modified_time'})
-            if mod_meta:
-                modified_time = mod_meta.get('content', 'N/A')
-            
+
             # 7. BREADCRUMB / CATEGORIES
             categories = []
             breadcrumb = soup.find('ul', id='breadcrumb')
@@ -278,7 +294,9 @@ class YoastSitemapScraper:
             # Giới hạn số ảnh
             images = images[:10]    
 
-            
+            for i in range(len(images)):
+                images[i] = wp_original_image_simple(images[i])
+
             wp_description_GP = description
             mod_info_GP = soup.select_one("#more-info-1>div").decode_contents().strip() if soup.select_one("#more-info-1>div") else ""
             whatnews = soup.select_one("section.mb-4>div.alert.alert-success").decode_contents().strip() if soup.select_one("section.mb-4>div.alert.alert-success") else ""
@@ -410,7 +428,7 @@ class YoastSitemapScraper:
         self,
         base_filename="articles_data",
         chunk_size=50,
-        output_dir="11-01"
+        output_dir="23-01"
     ):
 
         if not self.articles_data:

@@ -4,8 +4,8 @@ import requests
 from urllib.parse import urlparse, urljoin
 from bs4 import BeautifulSoup
 
-JSON_FILE = "/Users/qkha/Documents/tools/bug/11-01/liteapks_articles.json_part_1.json"
-SAVE_ROOT = "images"
+JSON_FILE = "/Users/qkha/Documents/tools/bug/./23-01/liteapks_articles.json_part_1.json"
+SAVE_ROOT = "img23-01"
 TIMEOUT = 20
 
 HEADERS = {
